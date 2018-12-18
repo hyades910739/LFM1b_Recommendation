@@ -7,17 +7,58 @@ from music_data_examination import examination
 
 
 def data_io(in_file,
-	        train_outfile,
-	        test_outfile,
-	        userid_map_outfile,
-	        itemid_map_outfile,
-	        n_user=5000,
-	        timespace=(60,3600),
-	        seqlen=(20,30),
-	        iter_limit=None,
-	        n_test=3,
-	        min_subseq=50):
-	'''process music data to other files.'''
+            train_outfile,
+            test_outfile,
+            userid_map_outfile,
+            itemid_map_outfile,
+            n_user=5000,
+            timespace=(60,3600),
+            seqlen=(20,30),
+            iter_limit=None,
+            n_test=3,
+            min_subseq=50):
+	'''
+	process music data,split the sequence to subsequences, and save to other files.
+
+	
+	Parameter:
+	------------------
+	in_file: str
+	    input file location	 
+    train_outfile: str
+	    the train_output file location and filename.	 
+    test_outfile: str
+	    the test_output file location and filename.
+    userid_map_outfile: str
+	    The userid mapping file location and filename.
+		In train_test file, the userid is encode as 0,1,2,... 
+		This file preserve the mapping from this encode to original userid.
+    itemid_map_outfile: str
+	    The itemid mapping file location and filename.
+		In train_test file, the itemid is encode as 1,2,3,...
+		This file preserve the mapping from this encode to original itemid.
+    n_user: int
+        how many user should we include in train/test data
+        timespace: tuple(int,int)
+	the cutoff point to split LE sequences to sub-sequences.
+	    MUST be (lower,higher) format.
+	seqlen: tuple(int,int)
+	    the minimum and maximum sub-sequence length to preserve in train/test set.
+	    MUST be (lower,higher) format.
+
+    iter_limit: int or None
+        how many LEs should we include in train/test
+        default is None, then we dont stop iteration due to iter_limit.
+    n_test: int
+        how many sub-sequences should be include in test set
+        if user a have 300 sub-seq and n_test=5
+        then we'll RANDOMLY select 5 sub-seqs into test set, and others remain in train set
+
+    min_subseq: int
+        how many sub-seqs should one user have to include in train/test set
+        if lower, the sub-seqs of current user will not include in train/test set	
+
+	'''
 
 	if not os.path.isfile(in_file):
 	 	raise FileNotFoundError("in_file not found!")
@@ -71,7 +112,7 @@ def data_io(in_file,
 
 
 def item_map_output(itemid_map_outfile,
-	                iid_map):
+                    iid_map):
 	with open(itemid_map_outfile,'a+') as f:
 		for k,v in iid_map.items():
 			l = str(v) + "," + str(k) + "\n"
@@ -80,16 +121,17 @@ def item_map_output(itemid_map_outfile,
 	
 			
 def subseq_process(item_list,
-	               uid,
-	               train_outfile,
-	               test_outfile,
-	               userid_map_outfile,
-	               timespace,
-	               seqlen,
-	               n_test,
-	               min_subseq,
-	               uid_map,
-	               iid_map):
+                   uid,
+                   train_outfile,
+                   test_outfile,
+                   userid_map_outfile,
+                   timespace,
+                   seqlen,
+                   n_test,
+                   min_subseq,
+                   uid_map,
+                   iid_map):
+	'''main function to conduct sub-seq split/filter'''
 	
 	MINTIME,MAXTIME = timespace
 	MINLEN,MAXLEN = seqlen
@@ -160,12 +202,12 @@ def remove_repeat(seq):
 	return [seq[i] for i in sel]        
 
 def subseq_output(res,
-	              train_outfile,
-	              test_outfile,
-	              userid_map_outfile,
-	              n_test,
-	              uid,
-	              uid_map):
+                  train_outfile,
+                  test_outfile,
+                  userid_map_outfile,
+                  n_test,
+                  uid,
+                  uid_map):
 	'''
 	   write subseq to train_file and test_file
        n randomly selected sub-sequence will write to testfile
@@ -211,8 +253,8 @@ if __name__ == '__main__':
 		config.iter_limit = None
 
 	if os.path.isfile(config.train_outfile) or os.path.isfile(config.test_outfile) \
-	                                        or os.path.isfile(config.userid_map_outfile) \
-	                                        or os.path.isfile(config.itemid_map_outfile):
+                                            or os.path.isfile(config.userid_map_outfile) \
+                                            or os.path.isfile(config.itemid_map_outfile):
 		print("***   WARNING : outfile exist!   ***")
 		print("train_outfile : '{}'".format(config.train_outfile),end=",")
 		print(" or test_outfile : '{}'".format(config.test_outfile))
@@ -230,13 +272,13 @@ if __name__ == '__main__':
 
 
 	data_io(in_file = config.in_file,
-	        train_outfile = config.train_outfile,
-	        test_outfile = config.test_outfile,
-	        userid_map_outfile = config.userid_map_outfile,
-	        itemid_map_outfile = config.itemid_map_outfile,
-	        n_user= config.n_user,
-	        timespace=(config.mintime,config.maxtime),
-	        seqlen=(config.minseqlen,config.maxseqlen),
-	        iter_limit=config.iter_limit,
-	        n_test=config.n_test,
-	        min_subseq=config.min_subseq)
+            train_outfile = config.train_outfile,
+            test_outfile = config.test_outfile,
+            userid_map_outfile = config.userid_map_outfile,
+            itemid_map_outfile = config.itemid_map_outfile,
+            n_user= config.n_user,
+            timespace=(config.mintime,config.maxtime),
+            seqlen=(config.minseqlen,config.maxseqlen),
+            iter_limit=config.iter_limit,
+            n_test=config.n_test,
+            min_subseq=config.min_subseq)

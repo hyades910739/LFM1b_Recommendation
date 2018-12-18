@@ -1,7 +1,7 @@
 import argparse
 
 def examination(train_outfile,test_outfile):
-	
+	'''Check the overlaping rate : how many testing items doesn't appear in trainset.'''
 	train_item = set()
 	test_item = set()
 	user_set = set()
