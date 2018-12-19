@@ -10,4 +10,5 @@ Now containing :
 3. `interaction.py` : class used to process data.  
 4. `nusic_interactions.py` : extend from interaction.py, class `MusicInteraction` inherit `Interactions` to deal with my music data.  
 5. `train_caser.py` : This is the main function, including training and testing process.  
-6. `utils.py` : some help functions.   
+6. `utils.py` : some help functions.   i
+7. `music_recommendation.py` : Rewrite class Recommendation to conduct training and testing process.  
