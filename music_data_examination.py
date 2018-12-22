@@ -39,6 +39,8 @@ def examination(train_outfile,test_outfile):
 	print("    sub_seqs: {:>8}, items:{:>8}".format(test_subseq_count,len(test_item)))
 	print("    overlap with train: {}, {}".format(crossover_count,crossover_count/len(test_item)))
 	print("*********")
+
+	return (n_user,n_item)
 			                                                                   
 			
 
