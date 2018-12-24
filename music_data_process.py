@@ -68,6 +68,7 @@ def data_io(in_file,
         n_iter = 0
         uid_map = 0
         iid_map = dict()
+        cur_iid = 0
         iid_no = 1
         prev_user = None
         item_list = list()
@@ -81,32 +82,35 @@ def data_io(in_file,
             if iter_limit is not None:
                 if n_iter > iter_limit:
                     break
-            if iid not in iid_map:
-                iid_map[iid] = iid_no
-                iid_no += 1
+
             if prev_user != uid:
                 if prev_user is None:
                     prev_user = uid
                 else:
-                    res = subseq_process(item_list,prev_user,train_outfile,
-                                         test_outfile,userid_map_outfile,timespace,
-                                         seqlen,n_test,min_subseq,
-                                         uid_map,iid_map)
+                    res,new_iid_map,new_cur_iid = subseq_process(item_list,prev_user,train_outfile,
+                                                                 test_outfile,userid_map_outfile,timespace,
+                                                                 seqlen,n_test,min_subseq,
+                                                                 uid_map,iid_map,cur_iid)
+                    if res:
+                        iid_map = new_iid_map
+                        cur_iid = new_cur_iid
+
                     item_list = list()
                     prev_user = uid
                     if res : 
                         n_user_count += 1
                         uid_map += 1
-                    if n_user_count >= n_user:
+                    if n_user and n_user_count >= n_user:
                         break           
             item_list.append((iid,time))
         #finally:
         item_map_output(itemid_map_outfile,iid_map)
-
+    # print info
     print("\n****")
-    print(" {} LEs, {} users processed.".format(n_iter-1,n_user_count-1))
+    print(" {} LEs, {} users processed.".format(n_iter-1,n_user_count))
     print("****")
     print("\nnow examining...")
+    # check result
     examination(train_outfile,test_outfile)
 
 
@@ -114,9 +118,10 @@ def data_io(in_file,
 def item_map_output(itemid_map_outfile,
                     iid_map):
     with open(itemid_map_outfile,'a+') as f:
-        for k,v in iid_map.items():
-            l = str(v) + "," + str(k) + "\n"
+        for k,(v,count) in iid_map.items():
+            l = str(v) + "," + str(k) + "," + str(count) + "\n"
             f.writelines(l) 
+
 
     
             
@@ -130,16 +135,19 @@ def subseq_process(item_list,
                    n_test,
                    min_subseq,
                    uid_map,
-                   iid_map):
+                   iid_map,
+                   cur_iid):
     '''main function to conduct sub-seq split/filter'''
-    
+    new_iid_map = {k:v for k,v in iid_map.items()}
+    new_cur_iid = cur_iid
     MINTIME,MAXTIME = timespace
     MINLEN,MAXLEN = seqlen
     res = list()
     #sort list by time:
     item_list = sorted(item_list,key= lambda x:x[1])
     t = np.diff([i[1] for i in item_list])
-    item_list = [iid_map[i[0]] for i in item_list]
+    
+    item_list = [i[0] for i in item_list]
 
     # find cutoff point
     sel = (t>MAXTIME) | (t<MINTIME)
@@ -150,6 +158,10 @@ def subseq_process(item_list,
             cur = item_list[0:(i+1)]
             cur = remove_repeat(cur)
             if(len(cur)>=MINLEN and len(cur)<=MAXLEN): 
+                # update itemmap:
+                new_iid_map,new_cur_iid = iid_map_update(new_iid_map,cur,new_cur_iid)
+                cur = [new_iid_map[i][0] for i in cur]
+
                 cur = [uid_map] + cur
                 cur = [str(i) for i in cur]
                 cur = ",".join(cur) + "\n"
@@ -159,27 +171,45 @@ def subseq_process(item_list,
             cur = item_list[past:(i+1)]
             cur = remove_repeat(cur)
             if(len(cur)>=MINLEN and len(cur)<=MAXLEN): 
+                # update itemmap:
+                new_iid_map,new_cur_iid = iid_map_update(new_iid_map,cur,new_cur_iid)
+                cur = [new_iid_map[i][0] for i in cur]
+
                 cur = [uid_map] + cur
                 cur = [str(i) for i in cur]             
                 cur = ",".join(cur) + "\n"
                 res.append(cur)
             past = i+1
-
+    # for the last time
     cur = item_list[past:]
     cur = remove_repeat(cur)
     if(len(cur)>=MINLEN and len(cur)<=MAXLEN):
+
+        # update itemmap:
+        new_iid_map,new_cur_iid = iid_map_update(new_iid_map,cur,new_cur_iid)
+        cur = [new_iid_map[i][0] for i in cur]  
+
         cur = [uid_map] + cur
         cur = [str(i) for i in cur]
         cur = ",".join(cur) + "\n"
-        res.append(cur)     
+        res.append(cur)
+
     if len(res)>min_subseq:
         subseq_output(res,train_outfile,test_outfile,userid_map_outfile,n_test,uid,uid_map)
-        return True
+        return (True,new_iid_map,new_cur_iid)
     else:
-        return False
+        return (False,iid_map,cur_iid)
 
-    
 
+def iid_map_update(iid_map,itemlist,cur_iid_no):
+
+    for item in itemlist:
+        if item not in iid_map:
+            cur_iid_no += 1
+            iid_map[item] = [cur_iid_no,1]
+        else:
+            iid_map[item][1] += 1
+    return iid_map,cur_iid_no
 
 def remove_repeat(seq):
     '''
@@ -239,14 +269,14 @@ if __name__ == '__main__':
     parser.add_argument('--test_outfile', type=str, default='data/test')    
     parser.add_argument('--userid_map_outfile', type=str, default='data/userid_map')    
     parser.add_argument('--itemid_map_outfile', type=str, default='data/itemid_map')    
-    parser.add_argument('--n_user', type=int, default=3000)
+    parser.add_argument('--n_user', type=int, default=500)
     parser.add_argument('--mintime', type=int, default=60)
     parser.add_argument('--maxtime', type=int, default=3600)
     parser.add_argument('--minseqlen', type=int, default=20)
     parser.add_argument('--maxseqlen', type=int, default=30)
     parser.add_argument('--iter_limit', type=int, default=0)
     parser.add_argument('--n_test', type=int, default=3)
-    parser.add_argument('--min_subseq', type=int, default=20)
+    parser.add_argument('--min_subseq', type=int, default=30)
 
     config = parser.parse_args()
     if config.iter_limit == 0 :
@@ -255,12 +285,13 @@ if __name__ == '__main__':
     if os.path.isfile(config.train_outfile) or os.path.isfile(config.test_outfile) \
                                             or os.path.isfile(config.userid_map_outfile) \
                                             or os.path.isfile(config.itemid_map_outfile):
-        print("***   WARNING : outfile exist!   ***")
-        print("train_outfile : '{}'".format(config.train_outfile),end=",")
-        print(" or test_outfile : '{}'".format(config.test_outfile))
-        print(" or userid_map_outfile : '{}'".format(config.userid_map_outfile),end=",")
-        print(" or itemid_map_outfile : '{}'".format(config.itemid_map_outfile))
-        print("enter y/Y to overlap it, else exit.")
+        print("***   WARNING : output file exist!   ***")
+        print("following file may already exist:")
+        print("train_outfile : '{}'".format(config.train_outfile))
+        print("test_outfile : '{}'".format(config.test_outfile))
+        print("userid_map_outfile : '{}'".format(config.userid_map_outfile))
+        print("temid_map_outfile : '{}'".format(config.itemid_map_outfile))
+        print("enter y/Y to run code and overlap these files, enter anything else to exit.")
         overlap = input()
         if overlap !='y' and overlap !="Y":
             print("exit!")

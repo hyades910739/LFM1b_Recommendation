@@ -169,6 +169,11 @@ class Recommender(object):
                                                 user_var,
                                                 item_negative_var,
                                                 use_cache=True)
+                print(sequence_var.shape)
+                print(user_var.shape)
+                print(item_target_var.shape)
+                print(item_negative_var.shape) 
+                return 0               
 
                 self._optimizer.zero_grad()
                 # compute the binary cross-entropy loss

@@ -103,13 +103,13 @@ def examination(train_outfile,test_outfile):
     with open(test_outfile,'rt') as test:
         for no,l in enumerate(test):
             user,*items = l.strip().split(",")
-            user_set.add(user)
+            user_set.add(int(user))
             for i in items:
                 test_item.add(int(i))
     test_subseq_count = no+1
     
-    n_user = len(user_set)
-    n_item = len(train_item.union(test_item))
+    n_user = max(user_set) +1
+    n_item = max(train_item.union(test_item))
     crossover_count = len(test_item.intersection(train_item)) 
 
     print("****   SUMMARY   ****")
