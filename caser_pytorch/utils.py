@@ -4,8 +4,7 @@ import torch
 import torch.nn.functional as F
 import random
 
-activation_getter = {'iden': lambda x: x, 'relu': F.relu, 'tanh': F.tanh, 'sigm': F.sigmoid}
-
+activation_getter = {'iden': lambda x: x, 'relu': F.relu, 'tanh': F.tanh, 'sigm': torch.sigmoid}
 
 def gpu(tensor, gpu=False):
 
@@ -122,3 +121,20 @@ def examination(train_outfile,test_outfile):
     print("*********")
 
     return (n_user,n_item)    
+
+
+#
+def precision_recall(pred,target,at=[1,5,10]):
+    prec_res = list()
+    recall_res = list()
+    target = set(target)
+    n = len(target)
+    for l in at:
+        cur_pred = set(pred[0:l])
+        prec = cur_pred.intersection(target)
+        recall = target.intersection(cur_pred)
+        prec_res.append(len(prec)/len(cur_pred))
+        recall_res.append(len(recall)/n)
+    return (prec_res,recall_res)
+
+

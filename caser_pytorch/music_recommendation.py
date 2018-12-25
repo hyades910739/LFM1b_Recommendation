@@ -10,6 +10,7 @@ from evaluation import evaluate_ranking
 from utils import *
 #from music_interactions import MusicInteraction,SequenceInteractions
 from train_caser import Recommender
+from tqdm import tqdm
 
 class Music_Recommender(Recommender):
     def __init__(self,
@@ -34,7 +35,7 @@ class Music_Recommender(Recommender):
         self.test_length = test_length
         if item_path:
             self.item_path = item_path
-            self.item_cumsum = self.get_item_cumsum()
+            self.item_cumsum = self._get_item_cumsum()
                 
     @property
     def train_path(self):
@@ -70,7 +71,7 @@ class Music_Recommender(Recommender):
             self._item_path = value        
     
 
-    def get_item_cumsum(self):
+    def _get_item_cumsum(self):
         '''read item counts and calculate item_count cusums for  negative sampling'''
         with open(self.item_path,'rt') as f:
             counts = list()
@@ -80,7 +81,7 @@ class Music_Recommender(Recommender):
                 counts.append(int(count))
         return np.cumsum(counts)
 
-    def minibatch_io(self,random=True):
+    def _minibatch_io(self,random=True):
         '''
             read data by iterator
 
@@ -101,7 +102,7 @@ class Music_Recommender(Recommender):
             cur_trainseqs = list()
             cur_testseqs = list()
             cur_uid = list()
-            for line in f:
+            for line in tqdm(f):
                 uid,*items = line.strip().split(",")
                 uid = int(uid)
                 items = [int(i) for i in items]
@@ -147,8 +148,6 @@ class Music_Recommender(Recommender):
 
         self._num_items = n_item +1 # for 0 padding
         self._num_users = n_user
-        print(self._num_items)
-        print(self._num_users)
         
         self._net = gpu(Caser(self._num_users,
                               self._num_items,
@@ -186,7 +185,7 @@ class Music_Recommender(Recommender):
             self._net.train()
             epoch_loss = 0.0
 
-            for minibatch_num,(cur_uid,cur_trainseqs,cur_testseqs) in enumerate(self.minibatch_io(random=True)):
+            for minibatch_num,(cur_uid,cur_trainseqs,cur_testseqs) in enumerate(self._minibatch_io(random=True)):
                 
                 negative_samples = self._generate_negative_samples(np.concatenate((cur_trainseqs,cur_testseqs),axis=1),
                                                                    self._neg_samples)
@@ -221,11 +220,12 @@ class Music_Recommender(Recommender):
 
                 self._optimizer.zero_grad()
                 # compute the binary cross-entropy loss
-                positive_loss = -torch.mean(torch.log(F.sigmoid(target_prediction)))
-                negative_loss = -torch.mean(torch.log(1 - F.sigmoid(negative_prediction)))
+                positive_loss = -torch.mean(torch.log(torch.sigmoid(target_prediction)))
+                negative_loss = -torch.mean(torch.log(1 - torch.sigmoid(negative_prediction)))
                 loss = positive_loss + negative_loss
 
-                epoch_loss += loss.data[0]
+                epoch_loss += loss.data.item()
+
 
                 loss.backward()
                 self._optimizer.step()
@@ -234,6 +234,8 @@ class Music_Recommender(Recommender):
 
             t2 = time()
             if verbose and (epoch_num + 1) % 1 == 0:
+                pass
+                '''
                 precision, recall, mean_aps = evaluate_ranking(self, test, train, k=[1, 5, 10])
                 output_str = "Epoch %d [%.1f s]\tloss=%.4f, map=%.4f, " \
                              "prec@1=%.4f, prec@5=%.4f, prec@10=%.4f, " \
@@ -248,13 +250,17 @@ class Music_Recommender(Recommender):
                                                                                          np.mean(recall[1]),
                                                                                          np.mean(recall[2]),
                                                                                          time() - t2)
+
                 print(output_str)
+                '''
             else:
                 output_str = "Epoch %d [%.1f s]\tloss=%.4f [%.1f s]" % (epoch_num + 1,
                                                                         t2 - t1,
                                                                         epoch_loss,
                                                                         time() - t2)
                 print(output_str)
+                if  epoch_num and (epoch_num+1) % 5 ==0:
+                    self.validation()
     
 
     def _generate_negative_samples(self,seqs,n):
@@ -278,24 +284,85 @@ class Music_Recommender(Recommender):
 
         return negative_samples
 
+    def _validation_io(self):        
+        with open(self.test_path,'rt') as f:
+            i = 0
+            uid_list = list()
+            seq_list = list()
+            target_list = list()
+            for l in f:
+                uid,*items = l.strip().split(',')
+                uid = int(uid)
+                items = [int(item) for item in items]
+                yield([[uid]],[items[0:self.train_length]],[items[self.train_length:]])
+            
+
+    def validation(self):
+        print("Validating...")
+        prec_1_list = []
+        prec_5_list = []
+        prec_10_list = []
+        recall_1_list = []
+        recall_5_list = []
+        recall_10_list = []
+
+        self._net.eval()
+        items = np.arange(1,self._num_items)
+        for (uids,seq_list,target_list) in tqdm(self._validation_io()):
+            sequence_var = Variable(gpu(torch.from_numpy(np.array(seq_list)),self._use_cuda))
+            user_var = Variable(gpu(torch.from_numpy(np.array(uids)),self._use_cuda))
+            batch_items = np.array([items for i in range(len(uids))])
+            item_var = Variable(gpu(torch.from_numpy(batch_items),self._use_cuda))            
+            # 剛剛發現不能mini-batch，三小= =
+
+            out = self._net(sequence_var,
+                            user_var,
+                            item_var,
+                            for_pred=True)
+
+            out = cpu(out.data).numpy().flatten()
+            #sorted 
+            pred = (-out).argsort()[0:10]
+            (prec_1,prec_5,prec_10),(recall_1,recall_5,recall_10) = precision_recall(pred,target_list[0],at=[1,5,10])
+            prec_1_list.append(prec_1)
+            prec_5_list.append(prec_5)
+            prec_10_list.append(prec_10)
+            recall_1_list.append(recall_1)
+            recall_5_list.append(recall_5)
+            recall_10_list.append(recall_10)
+
+
+        print("****    RESULT    ****")            
+        print("  Prec@1    : {:.4f}".format(np.mean(prec_1_list)),end=" | ")
+        print("  Prec@5    : {:.4f}".format(np.mean(prec_5_list)),end=" | ")
+        print("  Prec@10   : {:.4f}".format(np.mean(prec_10_list)),end="\n")
+        print("  Recall@1  : {:.4f}".format(np.mean(recall_1_list)),end=" | ")
+        print("  Recall@5  : {:.4f}".format(np.mean(recall_5_list)),end=" | ")
+        print("  Recall@10 : {:.4f}".format(np.mean(recall_10_list)),end="\n")
+
+
+
+
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # data arguments
-    parser.add_argument('--train_path', type=str, default='/home/hyades/Documents/py/LFM-1b/data/train')
-    parser.add_argument('--test_path', type=str, default='/home/hyades/Documents/py/LFM-1b/data/test')
-    parser.add_argument('--item_path', type=str, default='/home/hyades/Documents/py/LFM-1b/data/itemid_map')
+    parser.add_argument('--train_path', type=str, default='../data/train')
+    parser.add_argument('--test_path', type=str, default='../data/test')
+    parser.add_argument('--item_path', type=str, default='../data/itemid_map')
 
     parser.add_argument('--L', type=int, default=5)
     parser.add_argument('--T', type=int, default=3)
     # train arguments
-    parser.add_argument('--n_iter', type=int, default=5)
+    parser.add_argument('--n_iter', type=int, default=30)
     parser.add_argument('--seed', type=int, default=1234)
     parser.add_argument('--batch_size', type=int, default=512)
-    parser.add_argument('--learning_rate', type=float, default=1e-3)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--l2', type=float, default=1e-6)
     parser.add_argument('--neg_samples', type=int, default=3)
-    parser.add_argument('--use_cuda', type=str2bool, default=True)
+    parser.add_argument('--use_cuda', type=str2bool, default=False)
 
     config = parser.parse_args()
 
@@ -329,6 +396,8 @@ if __name__ == '__main__':
                              use_cuda=config.use_cuda)
 
     model.fit(verbose=False)
+    model.validation()
+    #torch.save(model, "model_20iter")
 
 
 
