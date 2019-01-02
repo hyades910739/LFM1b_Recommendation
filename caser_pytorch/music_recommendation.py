@@ -11,6 +11,7 @@ from utils import *
 #from music_interactions import MusicInteraction,SequenceInteractions
 from train_caser import Recommender
 from tqdm import tqdm
+from gensim.models import Word2Vec
 
 class Music_Recommender(Recommender):
     def __init__(self,
@@ -19,6 +20,7 @@ class Music_Recommender(Recommender):
                  item_path,
                  train_length,
                  test_length,
+                 pre_train_path=None,
                  n_iter=None,
                  batch_size=None,
                  l2=None,
@@ -33,10 +35,15 @@ class Music_Recommender(Recommender):
         self.test_path = test_path
         self.train_length = train_length
         self.test_length = test_length
+        self.pre_train_path = pre_train_path
         if item_path:
-            self.item_path = item_path
-            self.item_cumsum = self._get_item_cumsum()
-                
+            pass
+            #self.item_path = item_path
+            #self.item_cumsum = self._get_item_cumsum()
+
+        
+
+
     @property
     def train_path(self):
         return self._train_path
@@ -73,12 +80,17 @@ class Music_Recommender(Recommender):
 
     def _get_item_cumsum(self):
         '''read item counts and calculate item_count cusums for  negative sampling'''
+        '''
         with open(self.item_path,'rt') as f:
             counts = list()
             for line in f:
                 _,_,count = line.strip().split(",")
 
                 counts.append(int(count))
+        '''
+        counts = list()
+        for item in self.item_map.values():
+            counts.append(item[1])
         return np.cumsum(counts)
 
     def _minibatch_io(self,random=True):
@@ -105,7 +117,7 @@ class Music_Recommender(Recommender):
             for line in tqdm(f):
                 uid,*items = line.strip().split(",")
                 uid = int(uid)
-                items = [int(i) for i in items]
+                items = [self.item_map[int(i)][0] for i in items]
                 for i in range(len(items)-length+1):
                     seq = items[i:(i+length)]
                     cur_trainseqs.append(seq[0:train_length])
@@ -144,14 +156,41 @@ class Music_Recommender(Recommender):
         return self._net is not None
 
     def _initialize(self):
-        n_user,n_item = examination(self.train_path,self.test_path)
+        n_user,n_item,item_map = examination(self.train_path,self.test_path)
 
-        self._num_items = n_item +1 # for 0 padding
+        self._num_items = len(item_map) +1 # for 0 padding
         self._num_users = n_user
+        self.item_map = item_map
+        self.item_cumsum = self._get_item_cumsum()
+        #items = [i[0] for i in  self.item_map.values()]
+        #print(max(items),self._num_items)
         
+        # get pre_train embeddings
+        if self.pre_train_path:
+
+            w2v = Word2Vec.load(self.pre_train_path)
+            dims = w2v.trainables.layer1_size
+            pre_train_array = list()
+            sort_index = list()
+            for k,v in item_map.items():
+                sort_index.append(v[0])
+                try:                
+                    pre_train_array.append(w2v.wv.get_vector(str(k)))
+                except KeyError:
+                    pre_train_array.append(np.random.randn(dims))
+
+
+            pre_train_array = np.array(pre_train_array)
+            pre_train_array = pre_train_array[np.argsort(sort_index)]
+
+
+
+
+
         self._net = gpu(Caser(self._num_users,
                               self._num_items,
-                              self.model_args), self._use_cuda)
+                              self.model_args,
+                              pre_train_array), self._use_cuda)
 
         self._optimizer = optim.Adam(
             self._net.parameters(),
@@ -294,7 +333,19 @@ class Music_Recommender(Recommender):
                 uid,*items = l.strip().split(',')
                 uid = int(uid)
                 items = [int(item) for item in items]
-                yield([[uid]],[items[0:self.train_length]],[items[self.train_length:]])
+                (test_set,eval_set) = self._split_test_seq(items)
+                yield([[uid]],[test_set],[eval_set])
+
+    def _split_test_seq(self,seq):
+        test_set = seq[0:10]
+        test_set = [self.item_map.get(i,(0,0))[0] for i in test_set]
+        test_set = list(filter(lambda x:x>0,test_set))
+        if len(test_set)>5:
+            test_set = test_set[-5:]
+        else:
+            test_set = [0]*(5-len(test_set)) + test_set # padding 0 if len(test_set)<5
+        eval_set = seq[10:]
+        return (test_set,eval_set)
             
 
     def validation(self):
@@ -314,7 +365,6 @@ class Music_Recommender(Recommender):
             batch_items = np.array([items for i in range(len(uids))])
             item_var = Variable(gpu(torch.from_numpy(batch_items),self._use_cuda))            
             # 剛剛發現不能mini-batch，三小= =
-
             out = self._net(sequence_var,
                             user_var,
                             item_var,
@@ -349,18 +399,19 @@ class Music_Recommender(Recommender):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # data arguments
-    parser.add_argument('--train_path', type=str, default='../data/train')
-    parser.add_argument('--test_path', type=str, default='../data/test')
-    parser.add_argument('--item_path', type=str, default='../data/itemid_map')
-
+    parser.add_argument('--train_path', type=str, default='../data/train10000')
+    parser.add_argument('--test_path', type=str, default='../data/test10000')
+    parser.add_argument('--item_path', type=str, default='../data/itemid_map10000')
+    parser.add_argument('--pre_train_path', type=str, default='../word2vec10000.model')
+    
     parser.add_argument('--L', type=int, default=5)
     parser.add_argument('--T', type=int, default=3)
     # train arguments
-    parser.add_argument('--n_iter', type=int, default=30)
+    parser.add_argument('--n_iter', type=int, default=50)
     parser.add_argument('--seed', type=int, default=1234)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
-    parser.add_argument('--l2', type=float, default=1e-6)
+    parser.add_argument('--l2', type=float, default=1e-5)
     parser.add_argument('--neg_samples', type=int, default=3)
     parser.add_argument('--use_cuda', type=str2bool, default=False)
 
@@ -368,7 +419,7 @@ if __name__ == '__main__':
 
     # model dependent arguments
     model_parser = argparse.ArgumentParser()
-    model_parser.add_argument('--d', type=int, default=50)
+    model_parser.add_argument('--d', type=int, default=100)
     model_parser.add_argument('--nv', type=int, default=4)
     model_parser.add_argument('--nh', type=int, default=16)
     model_parser.add_argument('--drop', type=float, default=0.5)
@@ -387,13 +438,14 @@ if __name__ == '__main__':
                               item_path=config.item_path,
                               train_length=config.L,
                               test_length=config.T,
+                              pre_train_path=config.pre_train_path,
                               n_iter=config.n_iter,
-                             batch_size=config.batch_size,
-                             learning_rate=config.learning_rate,
-                             l2=config.l2,
-                             neg_samples=config.neg_samples,
-                             model_args=model_config,
-                             use_cuda=config.use_cuda)
+                              batch_size=config.batch_size,
+                              learning_rate=config.learning_rate,
+                              l2=config.l2,
+                              neg_samples=config.neg_samples,
+                              model_args=model_config,
+                              use_cuda=config.use_cuda)
 
     model.fit(verbose=False)
     model.validation()

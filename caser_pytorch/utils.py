@@ -83,10 +83,15 @@ def str2bool(v):
 
 #hyades
 def examination(train_outfile,test_outfile):
-    '''Check the overlaping rate : how many testing items doesn't appear in trainset.'''
+    '''
+        Check the overlaping rate : how many testing items doesn't appear in trainset.
+        Also return n_user,n_item,item_map for model use
+    '''
     train_item = set()
     test_item = set()
     user_set = set()
+    item_map = dict()
+    item_map_count=0
     train_subseq_count = 0
     test_subseq_count = 0
     n_user = 0
@@ -96,6 +101,13 @@ def examination(train_outfile,test_outfile):
         for no,l in enumerate(train):
             _,*items = l.strip().split(",")
             for i in items:
+                i = int(i)
+                if i not in item_map:
+                    item_map_count +=1
+                    item_map[i] = [item_map_count,1]
+                else:
+                    item_map[i][1] += 1
+
                 train_item.add(int(i))
     train_subseq_count = no+1
 
@@ -120,7 +132,7 @@ def examination(train_outfile,test_outfile):
     print("    overlap with train: {}, {}".format(crossover_count,crossover_count/len(test_item)))
     print("*********")
 
-    return (n_user,n_item)    
+    return (n_user,n_item,item_map)    
 
 
 #

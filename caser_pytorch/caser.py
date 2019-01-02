@@ -22,7 +22,7 @@ class Caser(nn.Module):
         Model-related arguments, like latent dimensions.
     """
 
-    def __init__(self, num_users, num_items, model_args):
+    def __init__(self, num_users, num_items, model_args,pre_train=None):
         super(Caser, self).__init__()
         self.args = model_args
 
@@ -36,8 +36,12 @@ class Caser(nn.Module):
         self.ac_fc = activation_getter[self.args.ac_fc]
 
         # user and item embeddings
+        if pre_train:
+            self.item_embeddings = nn.Embedding.from_pretrained(pre_train)
+            dims = pre_train.shape[1]
+        else:            
+            self.item_embeddings = nn.Embedding(num_items, dims)
         self.user_embeddings = nn.Embedding(num_users, dims)
-        self.item_embeddings = nn.Embedding(num_items, dims)
 
         # vertical conv layer
         self.conv_v = nn.Conv2d(1, self.n_v, (L, 1))
