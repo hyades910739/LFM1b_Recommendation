@@ -166,8 +166,7 @@ class Music_Recommender(Recommender):
         #print(max(items),self._num_items)
         
         # get pre_train embeddings
-        if self.pre_train_path:
-
+        if self.pre_train_path and os.path.isdir(self.pre_train_path):
             w2v = Word2Vec.load(self.pre_train_path)
             dims = w2v.trainables.layer1_size
             pre_train_array = list()
@@ -179,9 +178,11 @@ class Music_Recommender(Recommender):
                 except KeyError:
                     pre_train_array.append(np.random.randn(dims))
 
-
             pre_train_array = np.array(pre_train_array)
             pre_train_array = pre_train_array[np.argsort(sort_index)]
+        else:
+            pre_train_array=None
+
 
 
 
@@ -303,9 +304,12 @@ class Music_Recommender(Recommender):
     
 
     def _generate_negative_samples(self,seqs,n):
+        '''
+        generate negative samples for training.
+        The negative samples will randomly select with item counts as its weight.
+        '''
         n_seqs = seqs.shape[0]
-        # generate negative samples, item counts as sampling weight 
-        
+        # generate negative samples with item counts as sampling weight         
         negative_samples_flat = self.item_cumsum.searchsorted(np.random.uniform(0,self.item_cumsum[-1],n_seqs*n))
         
         negative_samples = negative_samples_flat.reshape((n_seqs,n))
@@ -399,29 +403,29 @@ class Music_Recommender(Recommender):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # data arguments
-    parser.add_argument('--train_path', type=str, default='../data/train10000')
-    parser.add_argument('--test_path', type=str, default='../data/test10000')
+    parser.add_argument('--train_path', type=str, default='../data/train100new')
+    parser.add_argument('--test_path', type=str, default='../data/test100new')
     parser.add_argument('--item_path', type=str, default='../data/itemid_map10000')
-    parser.add_argument('--pre_train_path', type=str, default='../word2vec10000.model')
+    parser.add_argument('--pre_train_path', type=str, default='../data/word2vec10000.model')
     
     parser.add_argument('--L', type=int, default=5)
-    parser.add_argument('--T', type=int, default=3)
+    parser.add_argument('--T', type=int, default=2)
     # train arguments
     parser.add_argument('--n_iter', type=int, default=50)
     parser.add_argument('--seed', type=int, default=1234)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--l2', type=float, default=1e-5)
-    parser.add_argument('--neg_samples', type=int, default=3)
-    parser.add_argument('--use_cuda', type=str2bool, default=False)
+    parser.add_argument('--neg_samples', type=int, default=5)
+    parser.add_argument('--use_cuda', type=str2bool, default=True)
 
     config = parser.parse_args()
 
     # model dependent arguments
     model_parser = argparse.ArgumentParser()
     model_parser.add_argument('--d', type=int, default=100)
-    model_parser.add_argument('--nv', type=int, default=4)
-    model_parser.add_argument('--nh', type=int, default=16)
+    model_parser.add_argument('--nv', type=int, default=10)
+    model_parser.add_argument('--nh', type=int, default=20)
     model_parser.add_argument('--drop', type=float, default=0.5)
     model_parser.add_argument('--ac_conv', type=str, default='relu')
     model_parser.add_argument('--ac_fc', type=str, default='relu')

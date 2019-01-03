@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from utils import activation_getter
-
+import numpy as np
 
 class Caser(nn.Module):
     """
@@ -36,7 +36,8 @@ class Caser(nn.Module):
         self.ac_fc = activation_getter[self.args.ac_fc]
 
         # user and item embeddings
-        if pre_train:
+        if isinstance(pre_train,np.ndarray):
+            pre_train = torch.from_numpy(pre_train)
             self.item_embeddings = nn.Embedding.from_pretrained(pre_train)
             dims = pre_train.shape[1]
         else:            
@@ -65,9 +66,12 @@ class Caser(nn.Module):
 
         # weight initialization
         self.user_embeddings.weight.data.normal_(0, 1.0 / self.user_embeddings.embedding_dim)
-        self.item_embeddings.weight.data.normal_(0, 1.0 / self.item_embeddings.embedding_dim)
+        #self.item_embeddings.weight.data.normal_(0, 1.0 / self.item_embeddings.embedding_dim)
         self.W2.weight.data.normal_(0, 1.0 / self.W2.embedding_dim)
         self.b2.weight.data.zero_()
+
+        #batch norm
+        self.bn2 = nn.BatchNorm1d(dims*2)
 
         self.cache_x = None
 
@@ -96,8 +100,8 @@ class Caser(nn.Module):
 
         if not use_cache:
             # Embedding Look-up
-            item_embs = self.item_embeddings(seq_var).unsqueeze(1)  # use unsqueeze() to get 4-D
-            user_emb = self.user_embeddings(user_var).squeeze(1)
+            item_embs = self.item_embeddings(seq_var).unsqueeze(1).float()  # use unsqueeze() to get 4-D
+            user_emb = self.user_embeddings(user_var).squeeze(1).float( )
 
             # Convolutional Layers
             out, out_h, out_v = None, None, None
@@ -123,6 +127,9 @@ class Caser(nn.Module):
             # fully-connected layer
             z = self.ac_fc(self.fc1(out))
             x = torch.cat([z, user_emb], 1)
+            #batch norm!
+            x = self.bn2(x)
+
 
             self.cache_x = x
 
