@@ -40,6 +40,7 @@ class Caser(nn.Module):
             pre_train = torch.from_numpy(pre_train)
             self.item_embeddings = nn.Embedding.from_pretrained(pre_train)
             dims = pre_train.shape[1]
+            self.item_embeddings.requires_grad=False
         else:            
             self.item_embeddings = nn.Embedding(num_items, dims)
         self.user_embeddings = nn.Embedding(num_users, dims)

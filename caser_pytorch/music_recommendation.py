@@ -156,6 +156,7 @@ class Music_Recommender(Recommender):
         return self._net is not None
 
     def _initialize(self):
+        print("train/test examination...")
         n_user,n_item,item_map = examination(self.train_path,self.test_path)
 
         self._num_items = len(item_map) +1 # for 0 padding
@@ -165,36 +166,42 @@ class Music_Recommender(Recommender):
         #items = [i[0] for i in  self.item_map.values()]
         #print(max(items),self._num_items)
         
-        # get pre_train embeddings
-        if self.pre_train_path and os.path.isdir(self.pre_train_path):
+        # get pr_etrain embeddings
+        print(self.pre_train_path)
+        print(os.path.isfile(self.pre_train_path))
+        if self.pre_train_path and os.path.isfile(self.pre_train_path):
+            print("loading pre_train value")
             w2v = Word2Vec.load(self.pre_train_path)
             dims = w2v.trainables.layer1_size
             pre_train_array = list()
             sort_index = list()
-            for k,v in item_map.items():
+            for k,v in item_map.items():                
                 sort_index.append(v[0])
                 try:                
                     pre_train_array.append(w2v.wv.get_vector(str(k)))
                 except KeyError:
                     pre_train_array.append(np.random.randn(dims))
+            # add 0 padding:
+            if 0 not in sort_index:
+                sort_index.append(0)
+                pre_train_array.append(np.random.randn(dims))
 
             pre_train_array = np.array(pre_train_array)
             pre_train_array = pre_train_array[np.argsort(sort_index)]
         else:
+            print("no pre_train value")
             pre_train_array=None
-
-
-
-
-
 
         self._net = gpu(Caser(self._num_users,
                               self._num_items,
                               self.model_args,
                               pre_train_array), self._use_cuda)
 
+        
+        par = filter(lambda p: p.requires_grad,self._net.parameters())
+        #self._net.parameters()
         self._optimizer = optim.Adam(
-            self._net.parameters(),
+            par,
             weight_decay=self._l2,
             lr=self._learning_rate)                        
 
@@ -403,18 +410,18 @@ class Music_Recommender(Recommender):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # data arguments
-    parser.add_argument('--train_path', type=str, default='../data/train100new')
-    parser.add_argument('--test_path', type=str, default='../data/test100new')
-    parser.add_argument('--item_path', type=str, default='../data/itemid_map10000')
-    parser.add_argument('--pre_train_path', type=str, default='../data/word2vec10000.model')
+    parser.add_argument('--train_path', type=str, default='../data/train500')
+    parser.add_argument('--test_path', type=str, default='../data/test500')
+    parser.add_argument('--item_path', type=str, default='../data/itemid_map')
+    parser.add_argument('--pre_train_path', type=str, default='/home/hyades/Documents/py/LFM-1b/data/word2vec100.model')
     
     parser.add_argument('--L', type=int, default=5)
-    parser.add_argument('--T', type=int, default=2)
+    parser.add_argument('--T', type=int, default=3)
     # train arguments
-    parser.add_argument('--n_iter', type=int, default=50)
+    parser.add_argument('--n_iter', type=int, default=60)
     parser.add_argument('--seed', type=int, default=1234)
-    parser.add_argument('--batch_size', type=int, default=512)
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--batch_size', type=int, default=1024)
+    parser.add_argument('--learning_rate', type=float, default=5e-5)
     parser.add_argument('--l2', type=float, default=1e-5)
     parser.add_argument('--neg_samples', type=int, default=5)
     parser.add_argument('--use_cuda', type=str2bool, default=True)

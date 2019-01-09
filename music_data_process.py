@@ -156,7 +156,7 @@ def subseq_process(item_list,
             cur = remove_repeat(cur)
             if(len(cur)>=MINLEN and len(cur)<=MAXLEN): 
                 # update itemmap:
-                new_iid_map,new_cur_iid = iid_map_update(new_iid_map,cur,new_cur_iid)                
+                new_iid_map,new_cur_iid = iid_map_update(iid_map,new_iid_map,cur,new_cur_iid)                
                 for i in range(len(cur)):
                     try:
                         cur[i] = new_iid_map[cur[i]][0]
@@ -173,7 +173,7 @@ def subseq_process(item_list,
             cur = remove_repeat(cur)
             if(len(cur)>=MINLEN and len(cur)<=MAXLEN): 
                 # update itemmap:
-                new_iid_map,new_cur_iid = iid_map_update(new_iid_map,cur,new_cur_iid)
+                new_iid_map,new_cur_iid = iid_map_update(iid_map,new_iid_map,cur,new_cur_iid)
                 for i in range(len(cur)):
                     try:
                         cur[i] = new_iid_map[cur[i]][0]
@@ -190,7 +190,7 @@ def subseq_process(item_list,
     cur = remove_repeat(cur)
     if(len(cur)>=MINLEN and len(cur)<=MAXLEN):
         # update itemmap:
-        new_iid_map,new_cur_iid = iid_map_update(new_iid_map,cur,new_cur_iid)
+        new_iid_map,new_cur_iid = iid_map_update(iid_map,new_iid_map,cur,new_cur_iid)
         for i in range(len(cur)):
             try:
                 cur[i] = new_iid_map[cur[i]][0]
@@ -202,7 +202,7 @@ def subseq_process(item_list,
         cur = ",".join(cur) + "\n"
         res.append(cur)
 
-    if len(res)>min_subseq:
+    if len(res)>=min_subseq:
         subseq_output(res,train_outfile,test_outfile,userid_map_outfile,n_test,uid,uid_map)
         iid_map.update(new_iid_map)
         return (True,new_cur_iid)
@@ -210,15 +210,17 @@ def subseq_process(item_list,
         return (False,cur_iid)
 
 
-def iid_map_update(iid_map,itemlist,cur_iid_no):
+def iid_map_update(iid_map,new_iid_map,itemlist,cur_iid_no):
 
     for item in itemlist:
-        if item not in iid_map:
+        if item not in iid_map and item not in new_iid_map:
             cur_iid_no += 1
-            iid_map[item] = [cur_iid_no,1]
-        else:
+            new_iid_map[item] = [cur_iid_no,1]
+        elif item in iid_map:
             iid_map[item][1] += 1
-    return iid_map,cur_iid_no
+        elif item in new_iid_map:
+            new_iid_map[item][1] += 1
+    return new_iid_map,cur_iid_no
 
 def remove_repeat(seq):
     '''
@@ -252,7 +254,12 @@ def subseq_output(res,
        n randomly selected sub-sequence will write to testfile
        others goes to trainfile
     '''
-    sel = np.random.choice(range(len(res)),n_test,replace=False)
+    over30 = np.where(list(map(lambda x: True if len(x.split(","))>30 else False,res)))[0]
+    try:
+        sel = np.random.choice(over30,n_test,replace=False)
+    except ValueError:
+        sel = over30
+
 
     with open(userid_map_outfile,"a+") as map_:
         l = str(uid_map) + "," + str(uid) + "\n"
@@ -277,13 +284,13 @@ if __name__ == '__main__':
     parser.add_argument('--train_outfile', type=str, default='data/train')
     parser.add_argument('--test_outfile', type=str, default='data/test')    
     parser.add_argument('--userid_map_outfile', type=str, default='data/userid_map')    
-    parser.add_argument('--itemid_map_outfile', type=str, default='data/itemid_map2')    
-    parser.add_argument('--n_user', type=int, default=100)
+    parser.add_argument('--itemid_map_outfile', type=str, default='data/itemid_map')    
+    parser.add_argument('--n_user', type=int, default=None)
     parser.add_argument('--mintime', type=int, default=60)
     parser.add_argument('--maxtime', type=int, default=3600)
-    parser.add_argument('--minseqlen', type=int, default=20)
-    parser.add_argument('--maxseqlen', type=int, default=30)
-    parser.add_argument('--iter_limit', type=int, default=0)
+    parser.add_argument('--minseqlen', type=int, default=10)
+    parser.add_argument('--maxseqlen', type=int, default=50)
+    parser.add_argument('--iter_limit', type=int, default=None)
     parser.add_argument('--n_test', type=int, default=3)
     parser.add_argument('--min_subseq', type=int, default=30)
 
